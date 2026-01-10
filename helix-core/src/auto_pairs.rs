@@ -37,12 +37,19 @@ impl Pair {
     /// true if all of the pair's conditions hold for the given document and range
     pub fn should_close(&self, doc: &Rope, range: &Range) -> bool {
         let mut should_close = Self::next_is_not_alpha(doc, range);
+        should_close &= self.next_is_not_close(doc, range);
 
         if self.same() {
             should_close &= Self::prev_is_not_alpha(doc, range);
         }
 
         should_close
+    }
+
+    pub fn next_is_not_close(&self, doc: &Rope, range: &Range) -> bool {
+        let cursor = range.cursor(doc.slice(..));
+        let next_char = doc.get_char(cursor);
+        next_char.map(|c| c != self.close).unwrap_or(true)
     }
 
     pub fn next_is_not_alpha(doc: &Rope, range: &Range) -> bool {

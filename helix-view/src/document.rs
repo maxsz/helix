@@ -299,6 +299,7 @@ impl fmt::Debug for Document {
         f.debug_struct("Document")
             .field("id", &self.id)
             .field("text", &self.text)
+            .field("line_count", &self.line_count())
             .field("selections", &self.selections)
             .field("inlay_hints_oudated", &self.inlay_hints_oudated)
             .field("text_annotations", &self.inlay_hints)
@@ -1912,6 +1913,10 @@ impl Document {
                     .and_then(|config| config.indent.as_ref())
                     .map_or(DEFAULT_TAB_WIDTH, |config| config.tab_width)
             })
+    }
+
+    pub fn line_count(&self) -> usize {
+        self.text.len_lines()
     }
 
     // The width (in spaces) of a level of indentation.

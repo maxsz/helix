@@ -385,6 +385,12 @@ impl Range {
         first.is_some() && second.is_none()
     }
 
+    /// Returns true if this Range convers a single line in the given text.
+    pub fn is_single_line(&self, text: RopeSlice) -> bool {
+        let frag = self.fragment(text);
+        !(frag.contains('\n') || frag.contains('\r'))
+    }
+
     /// Converts this char range into an in order byte range, discarding
     /// direction.
     pub fn into_byte_range(&self, text: RopeSlice) -> (usize, usize) {
@@ -888,6 +894,23 @@ mod test {
     #[should_panic]
     fn test_new_empty() {
         let _ = Selection::new(smallvec![], 0);
+    }
+
+    #[test]
+    fn test_is_single_line() {
+        let tests = vec![
+            (Range::new(2, 4), RopeSlice::from("\r\nHi\r\n"), true),
+            (Range::new(0, 4), RopeSlice::from("\r\nHi\r\n"), false),
+        ];
+        for test in tests {
+            assert_eq!(
+                test.0.is_single_line(test.1),
+                test.2,
+                "expected {} to be {}",
+                test.0.fragment(test.1),
+                test.2
+            );
+        }
     }
 
     #[test]

@@ -1,0 +1,836 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Helix Architecture Explorer</title>
+<style>
+  :root {
+    --bg: #f4f1ea;
+    --ink: #1b1b1b;
+    --muted: #5a5a5a;
+    --panel: #fffdf8;
+    --accent-core: #2b7a3d;
+    --accent-view: #2b5d7a;
+    --accent-term: #b35a1d;
+    --accent-event: #6a2b7a;
+    --accent-support: #6b6b6b;
+    --line: #c9c1b3;
+    --highlight: #f5d77a;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+    color: var(--ink);
+    background: radial-gradient(1200px 600px at 20% 0%, #fff7e8, var(--bg));
+  }
+
+  header {
+    padding: 20px 28px 10px 28px;
+  }
+
+  header h1 {
+    margin: 0 0 8px 0;
+    font-size: 28px;
+    letter-spacing: 0.2px;
+  }
+
+  header p {
+    margin: 0;
+    color: var(--muted);
+    max-width: 980px;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr;
+    gap: 18px;
+    padding: 18px 20px 28px 20px;
+  }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.06);
+  }
+
+  .graph-card {
+    padding: 12px;
+  }
+
+  .panel-card {
+    padding: 18px 20px;
+    min-height: 520px;
+  }
+
+  .legend {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    padding: 8px 10px 14px 10px;
+    color: var(--muted);
+    font-size: 14px;
+  }
+  .legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .legend i {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    display: inline-block;
+  }
+
+  svg { width: 100%; height: 540px; }
+  .edge {
+    stroke: #9b8f7f;
+    stroke-width: 2;
+    fill: none;
+    opacity: 0.8;
+  }
+  .edge.dash { stroke-dasharray: 6 6; }
+
+  .node rect {
+    stroke: #222;
+    stroke-width: 1.4;
+    rx: 10;
+    ry: 10;
+    fill: #fefcf7;
+  }
+  .node text {
+    font-size: 14px;
+    font-weight: 600;
+    pointer-events: none;
+  }
+  .node .subtitle {
+    font-size: 11px;
+    font-weight: 400;
+    fill: #4a4a4a;
+  }
+
+  .node.core rect { fill: #e7f4ea; stroke: var(--accent-core); }
+  .node.view rect { fill: #e7f0f4; stroke: var(--accent-view); }
+  .node.term rect { fill: #f6efe7; stroke: var(--accent-term); }
+  .node.event rect { fill: #f0e7f4; stroke: var(--accent-event); }
+  .node.support rect { fill: #f0f0f0; stroke: var(--accent-support); }
+
+  .node.active rect {
+    stroke-width: 2.4;
+    filter: drop-shadow(0 0 6px rgba(0,0,0,0.2));
+  }
+
+  .panel-title {
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+  }
+  .panel-title h2 {
+    margin: 0;
+    font-size: 22px;
+  }
+  .panel-title small {
+    color: var(--muted);
+  }
+
+  .breadcrumbs {
+    margin: 6px 0 12px 0;
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  .section {
+    margin: 14px 0;
+  }
+  .section h3 {
+    margin: 0 0 8px 0;
+    font-size: 16px;
+  }
+  .section p {
+    margin: 0 0 8px 0;
+    line-height: 1.45;
+  }
+  .section ul {
+    margin: 0;
+    padding-left: 18px;
+  }
+  .section li {
+    margin-bottom: 6px;
+  }
+
+  .children {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .chip {
+    border: 1px solid var(--line);
+    background: #fff;
+    border-radius: 999px;
+    padding: 6px 10px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .chip:hover { background: var(--highlight); }
+
+  .flow {
+    background: #f9f4ea;
+    border: 1px dashed #c9b48e;
+    border-radius: 10px;
+    padding: 8px 10px;
+    font-size: 13px;
+    margin-top: 8px;
+  }
+
+  @media (max-width: 1100px) {
+    .layout { grid-template-columns: 1fr; }
+    svg { height: 480px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Helix Architecture Explorer</h1>
+  <p>Interactive map of the workspace crates. Click a component in the graph to drill down into how it works. The panel on the right goes three levels deep so you can understand responsibilities, key types, and how crates connect.</p>
+</header>
+
+<section class="layout">
+  <div class="card graph-card">
+    <div class="legend">
+      <span><i style="background: var(--accent-term)"></i>helix-term</span>
+      <span><i style="background: var(--accent-view)"></i>helix-view</span>
+      <span><i style="background: var(--accent-core)"></i>helix-core</span>
+      <span><i style="background: var(--accent-event)"></i>helix-event</span>
+      <span><i style="background: var(--accent-support)"></i>supporting crates</span>
+    </div>
+    <svg viewBox="0 0 1000 540" aria-label="Helix workspace graph" role="img">
+      <defs>
+        <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L10,3 L0,6 z" fill="#9b8f7f"></path>
+        </marker>
+      </defs>
+
+      <!-- edges -->
+      <path class="edge" d="M240 110 L320 110" marker-end="url(#arrow)"></path>
+      <path class="edge" d="M480 110 L560 110" marker-end="url(#arrow)"></path>
+      <path class="edge" d="M240 190 L240 170" marker-end="url(#arrow)"></path>
+      <path class="edge" d="M480 150 L480 200" marker-end="url(#arrow)"></path>
+      <path class="edge" d="M400 290 L400 260" marker-end="url(#arrow)"></path>
+      <path class="edge" d="M520 290 L520 260" marker-end="url(#arrow)"></path>
+      <path class="edge" d="M640 290 L640 260" marker-end="url(#arrow)"></path>
+      <path class="edge" d="M640 150 L640 170" marker-end="url(#arrow)"></path>
+      <path class="edge" d="M800 170 L800 200" marker-end="url(#arrow)"></path>
+      <path class="edge dash" d="M320 220 L320 140" marker-end="url(#arrow)"></path>
+      <path class="edge dash" d="M240 110 L320 220" marker-end="url(#arrow)"></path>
+
+      <!-- nodes -->
+      <g class="node term" data-node="helix-term" transform="translate(80,80)">
+        <rect width="160" height="60"></rect>
+        <text x="80" y="28" text-anchor="middle">helix-term</text>
+        <text x="80" y="45" text-anchor="middle" class="subtitle">terminal UI + event loop</text>
+      </g>
+
+      <g class="node support" data-node="helix-tui" transform="translate(160,170)">
+        <rect width="160" height="50"></rect>
+        <text x="80" y="30" text-anchor="middle">helix-tui</text>
+        <text x="80" y="44" text-anchor="middle" class="subtitle">rendering primitives</text>
+      </g>
+
+      <g class="node view" data-node="helix-view" transform="translate(320,80)">
+        <rect width="160" height="60"></rect>
+        <text x="80" y="28" text-anchor="middle">helix-view</text>
+        <text x="80" y="45" text-anchor="middle" class="subtitle">editor state + views</text>
+      </g>
+
+      <g class="node event" data-node="helix-event" transform="translate(320,200)">
+        <rect width="160" height="60"></rect>
+        <text x="80" y="28" text-anchor="middle">helix-event</text>
+        <text x="80" y="45" text-anchor="middle" class="subtitle">hooks + async</text>
+      </g>
+
+      <g class="node core" data-node="helix-core" transform="translate(560,80)">
+        <rect width="160" height="60"></rect>
+        <text x="80" y="28" text-anchor="middle">helix-core</text>
+        <text x="80" y="45" text-anchor="middle" class="subtitle">text model</text>
+      </g>
+
+      <g class="node support" data-node="helix-loader" transform="translate(560,170)">
+        <rect width="160" height="50"></rect>
+        <text x="80" y="30" text-anchor="middle">helix-loader</text>
+        <text x="80" y="44" text-anchor="middle" class="subtitle">runtime/config</text>
+      </g>
+
+      <g class="node support" data-node="helix-stdx" transform="translate(740,200)">
+        <rect width="160" height="50"></rect>
+        <text x="80" y="30" text-anchor="middle">helix-stdx</text>
+        <text x="80" y="44" text-anchor="middle" class="subtitle">shared utils</text>
+      </g>
+
+      <g class="node support" data-node="helix-lsp" transform="translate(320,290)">
+        <rect width="140" height="50"></rect>
+        <text x="70" y="30" text-anchor="middle">helix-lsp</text>
+        <text x="70" y="44" text-anchor="middle" class="subtitle">language servers</text>
+      </g>
+
+      <g class="node support" data-node="helix-dap" transform="translate(470,290)">
+        <rect width="140" height="50"></rect>
+        <text x="70" y="30" text-anchor="middle">helix-dap</text>
+        <text x="70" y="44" text-anchor="middle" class="subtitle">debug adapters</text>
+      </g>
+
+      <g class="node support" data-node="helix-vcs" transform="translate(620,290)">
+        <rect width="140" height="50"></rect>
+        <text x="70" y="30" text-anchor="middle">helix-vcs</text>
+        <text x="70" y="44" text-anchor="middle" class="subtitle">diffs/status</text>
+      </g>
+    </svg>
+  </div>
+
+  <div class="card panel-card" id="detail-panel">
+    <div class="panel-title">
+      <h2 id="panel-title">Helix Architecture</h2>
+      <small id="panel-kind">Overview</small>
+    </div>
+    <div class="breadcrumbs" id="panel-breadcrumbs"></div>
+
+    <div class="section">
+      <h3>What it is</h3>
+      <p id="panel-summary"></p>
+    </div>
+
+    <div class="section" id="panel-details"></div>
+
+    <div class="section">
+      <h3>Drill down</h3>
+      <div class="children" id="panel-children"></div>
+    </div>
+  </div>
+</section>
+
+<script>
+const nodes = {
+  overview: {
+    title: "Helix Architecture",
+    kind: "Overview",
+    summary: "Helix is layered: helix-term runs the terminal event loop and rendering; helix-view owns editor state (documents, views, config); helix-core provides the immutable text model and editing algorithms; helix-event supplies hooks and async communication. LSP/DAP/VCS plug into helix-view, and runtime assets are loaded via helix-loader.",
+    details: [
+      {
+        title: "High-level flow",
+        bullets: [
+          "Keystroke or terminal event enters helix-term and is mapped to a command.",
+          "helix-view applies the command to Editor/Document state and constructs core transactions.",
+          "helix-core updates Rope/Selection/Syntax and produces ChangeSets for undo/redo.",
+          "helix-event dispatches synchronous hooks and async tasks for side effects.",
+          "helix-term reads state to render UI components via the compositor."
+        ]
+      },
+      {
+        title: "Why the separation matters",
+        bullets: [
+          "Core editing logic can be reasoned about without terminal concerns.",
+          "View layer centralizes state and integrates LSP/DAP/VCS without UI coupling.",
+          "Term layer stays focused on presentation and input mapping.",
+          "Event system allows features to attach without tight dependencies."
+        ]
+      }
+    ],
+    children: ["helix-term", "helix-view", "helix-core", "helix-event", "helix-lsp", "helix-dap", "helix-vcs", "helix-tui", "helix-loader", "helix-stdx"]
+  },
+
+  "helix-term": {
+    title: "helix-term",
+    kind: "Terminal frontend",
+    summary: "Terminal UI runtime. Owns the event loop, CLI, rendering pipeline, and command/keymap dispatch. Builds the Application (editor + compositor + terminal backend) and drives rendering + input.",
+    details: [
+      {
+        title: "Primary responsibilities",
+        bullets: [
+          "Parse CLI args, load config, initialize logging.",
+          "Create Application with Editor, Compositor, and terminal backend.",
+          "Map key input to commands and update editor state.",
+          "Render layers and popups using the compositor."
+        ]
+      },
+      {
+        title: "Key areas",
+        bullets: [
+          "application.rs: main loop, LSP progress, compositor ownership.",
+          "commands.rs + keymap.rs: action definitions and bindings.",
+          "ui/: widgets for picker, overlays, status, editor view."
+        ]
+      }
+    ],
+    children: ["helix-term.application", "helix-term.compositor", "helix-term.commands", "helix-term.keymap", "helix-term.ui"]
+  },
+
+  "helix-term.application": {
+    title: "Application",
+    kind: "Core runtime",
+    summary: "Creates the terminal backend, builds the Editor, installs the compositor, and runs the async event loop. It is the glue between input, view state, and rendering.",
+    details: [
+      { title: "Key roles", bullets: ["Owns Editor + Compositor", "Manages jobs and LSP progress", "Handles startup flow and initial file loading"] }
+    ],
+    children: ["helix-term.application.loop", "helix-term.application.init"]
+  },
+  "helix-term.application.loop": {
+    title: "Event loop",
+    kind: "Runtime loop",
+    summary: "Collects terminal input, converts it into editor actions, runs async tasks, and triggers redraws when state changes.",
+    details: [
+      { title: "Interactions", bullets: ["Consumes key input", "Dispatches to commands", "Schedules redraws", "Awaits jobs and async hooks"] }
+    ],
+    children: []
+  },
+  "helix-term.application.init": {
+    title: "Initialization",
+    kind: "Startup",
+    summary: "Builds theme loader, editor state, compositor layers, and optionally opens tutorial or initial files.",
+    details: [
+      { title: "Inputs", bullets: ["CLI args", "Config + keymap", "Language loader"] }
+    ],
+    children: []
+  },
+
+  "helix-term.compositor": {
+    title: "Compositor",
+    kind: "Rendering stack",
+    summary: "A layered rendering stack. Each component renders into a surface; the compositor orders and combines layers (editor view, pickers, popups).",
+    details: [
+      { title: "Concepts", bullets: ["Layers are a Vec of components", "Top layer draws last", "Overlays are separate components"] }
+    ],
+    children: ["helix-term.ui"]
+  },
+  "helix-term.commands": {
+    title: "Commands",
+    kind: "Editor actions",
+    summary: "Defines the action functions that operate on the Editor. These actions call into helix-view to mutate documents, selections, config, or trigger LSP/DAP operations.",
+    details: [
+      { title: "Typical flow", bullets: ["Keymap triggers command", "Command builds Transaction", "Editor applies changes", "Events fire"] }
+    ],
+    children: []
+  },
+  "helix-term.keymap": {
+    title: "Keymap",
+    kind: "Input routing",
+    summary: "Maps keystrokes to command invocations; includes modal behavior and multi-key sequences.",
+    details: [
+      { title: "Notes", bullets: ["Mode-specific maps", "Supports leader-like sequences"] }
+    ],
+    children: []
+  },
+  "helix-term.ui": {
+    title: "UI components",
+    kind: "Widgets",
+    summary: "Terminal widgets for the editor view, pickers, overlays, diagnostics, and status. Components render to surfaces consumed by the compositor.",
+    details: [
+      { title: "Examples", bullets: ["EditorView", "File picker", "Popup overlays", "Status line"] }
+    ],
+    children: []
+  },
+
+  "helix-view": {
+    title: "helix-view",
+    kind: "Editor model",
+    summary: "Stateful editor layer. Owns Document and View models, the Editor global state, and integration points for LSP/DAP/VCS. Converts UI intent into core edits.",
+    details: [
+      {
+        title: "Primary responsibilities",
+        bullets: [
+          "Own document text, selections, history, syntax.",
+          "Maintain view splits and per-view state.",
+          "Integrate language servers, diagnostics, and diffs.",
+          "Dispatch editor lifecycle events via helix-event."
+        ]
+      }
+    ],
+    children: ["helix-view.document", "helix-view.view", "helix-view.editor", "helix-view.events", "helix-view.theme"]
+  },
+
+  "helix-view.document": {
+    title: "Document",
+    kind: "Open buffer",
+    summary: "A Document is the authoritative unit of text. It holds the Rope, selections per view, syntax tree, history, diagnostics, and LSP-related annotations.",
+    details: [
+      { title: "Holds", bullets: ["Rope text", "Selections per View", "Undo history", "Syntax + language config", "Diagnostics + inlay hints"] }
+    ],
+    children: ["helix-view.document.rope", "helix-view.document.history", "helix-view.document.lsp"]
+  },
+  "helix-view.document.rope": {
+    title: "Text + Rope",
+    kind: "Core text",
+    summary: "Document stores text in a Rope, making clones and slices cheap. Changes are applied via core Transactions and ChangeSets.",
+    details: [
+      { title: "Why rope", bullets: ["Efficient edits", "Cheap snapshots", "Fast slicing for rendering"] }
+    ],
+    children: []
+  },
+  "helix-view.document.history": {
+    title: "History",
+    kind: "Undo tree",
+    summary: "Tracks ChangeSets for undo/redo and maintains SavePoints for persisted state. It is the basis for revert and dirty tracking.",
+    details: [
+      { title: "Connections", bullets: ["ChangeSet from helix-core", "UndoKind + State snapshots"] }
+    ],
+    children: []
+  },
+  "helix-view.document.lsp": {
+    title: "LSP integration",
+    kind: "Language servers",
+    summary: "Attaches LSP clients per document, stores diagnostics, and maintains inlay hints and document color annotations.",
+    details: [
+      { title: "Signals", bullets: ["Diagnostics updates", "Inlay hints refresh", "DocumentDidChange events"] }
+    ],
+    children: []
+  },
+
+  "helix-view.view": {
+    title: "View",
+    kind: "Viewport",
+    summary: "A View represents a split and holds scroll offsets, gutters, and the active selection for its document. Multiple Views can display the same Document.",
+    details: [
+      { title: "Key idea", bullets: ["Document holds selections keyed by ViewId", "View manages viewport and gutters"] }
+    ],
+    children: ["helix-view.view.selection"]
+  },
+  "helix-view.view.selection": {
+    title: "Selection per view",
+    kind: "Cursor model",
+    summary: "Selections are stored per view, enabling multiple independent cursors and ranges over the same document.",
+    details: [
+      { title: "Core concept", bullets: ["Selection is a set of Ranges", "Ranges have anchor + head"] }
+    ],
+    children: []
+  },
+
+  "helix-view.editor": {
+    title: "Editor",
+    kind: "Global state",
+    summary: "The Editor owns all open documents, view tree layout, registers, config, and LSP/DAP registries. It is the state container that commands mutate.",
+    details: [
+      { title: "Contents", bullets: ["Document registry", "View tree", "Registers + clipboard", "Config snapshots"] }
+    ],
+    children: ["helix-view.editor.actions"]
+  },
+  "helix-view.editor.actions": {
+    title: "Editor actions",
+    kind: "Mutations",
+    summary: "Actions are higher-level operations that call into helix-core to produce Transactions and update Documents and Views.",
+    details: [
+      { title: "Flow", bullets: ["Command -> Action", "Action -> Transaction", "Transaction -> ChangeSet -> History"] }
+    ],
+    children: []
+  },
+
+  "helix-view.events": {
+    title: "Editor events",
+    kind: "Lifecycle hooks",
+    summary: "Defines DocumentDidOpen/Change/Close, SelectionDidChange, LanguageServer lifecycle, and ConfigDidChange events and dispatches them via helix-event.",
+    details: [
+      { title: "Use cases", bullets: ["Async hooks for diagnostics", "Update UI on selection change", "Reload config safely"] }
+    ],
+    children: []
+  },
+  "helix-view.theme": {
+    title: "Theme",
+    kind: "Styling",
+    summary: "Loads and applies themes, mapping syntax scopes to styles and rendering colors in the terminal UI.",
+    details: [
+      { title: "Runtime assets", bullets: ["Themes loaded from runtime", "Applies based on terminal color capabilities"] }
+    ],
+    children: []
+  },
+
+  "helix-core": {
+    title: "helix-core",
+    kind: "Editing primitives",
+    summary: "Core text model and algorithms. Provides Rope-based text storage, Selection/Range, Transactions, syntax integration, search, and editing utilities.",
+    details: [
+      {
+        title: "Primary responsibilities",
+        bullets: [
+          "Represent text as Rope with cheap clones/slices.",
+          "Express edits as Transactions and ChangeSets.",
+          "Provide selection/range semantics and text objects.",
+          "Integrate tree-sitter Syntax for highlighting/indent.",
+          "Supply diagnostics and formatting helpers."
+        ]
+      }
+    ],
+    children: ["helix-core.rope", "helix-core.transaction", "helix-core.selection", "helix-core.syntax", "helix-core.diagnostics"]
+  },
+
+  "helix-core.rope": {
+    title: "Rope",
+    kind: "Text storage",
+    summary: "Ropey-based text structure. Efficient for large files and frequent edits, enabling snapshots without copying the full text.",
+    details: [
+      { title: "Traits", bullets: ["Cheap cloning", "Fast slicing", "Efficient inserts/deletes"] }
+    ],
+    children: []
+  },
+  "helix-core.transaction": {
+    title: "Transaction",
+    kind: "Edit model",
+    summary: "Represents a coherent text change. Applied to a Rope to produce edits and can be inverted to implement undo.",
+    details: [
+      { title: "Key pieces", bullets: ["ChangeSet", "Invertible operations", "Mapping selections"] }
+    ],
+    children: ["helix-core.transaction.changeset"]
+  },
+  "helix-core.transaction.changeset": {
+    title: "ChangeSet",
+    kind: "Undo unit",
+    summary: "The derived diff of a Transaction used by history. It can be replayed, inverted, and used to update selections and marks.",
+    details: [
+      { title: "Why it matters", bullets: ["Basis for undo tree", "Allows selection mapping"] }
+    ],
+    children: []
+  },
+  "helix-core.selection": {
+    title: "Selection",
+    kind: "Multi-cursor",
+    summary: "Selection is a set of Ranges. Each Range has an anchor and a head, enabling Kakoune-style selections and multi-cursor editing.",
+    details: [
+      { title: "Semantics", bullets: ["Anchor is fixed, head moves", "Primary range drives cursor"] }
+    ],
+    children: []
+  },
+  "helix-core.syntax": {
+    title: "Syntax",
+    kind: "Tree-sitter",
+    summary: "Handles parsing and syntax highlighting. Uses tree-sitter via tree-house and supports indentation and text objects.",
+    details: [
+      { title: "Data", bullets: ["Syntax tree per document", "Language config for queries"] }
+    ],
+    children: ["helix-core.syntax.queries"]
+  },
+  "helix-core.syntax.queries": {
+    title: "Queries",
+    kind: "Runtime assets",
+    summary: "Runtime query files define highlights, indents, and text objects. They live under runtime/queries and are loaded by helix-loader.",
+    details: [
+      { title: "Interaction", bullets: ["helix-loader loads files", "Syntax uses them for parsing/highlighting"] }
+    ],
+    children: []
+  },
+  "helix-core.diagnostics": {
+    title: "Diagnostics",
+    kind: "Errors + warnings",
+    summary: "Diagnostic types unify errors from LSP, parsing, or other sources. helix-view stores and renders them via UI components.",
+    details: [
+      { title: "Usage", bullets: ["Stored on Document", "Rendered in gutter + overlays"] }
+    ],
+    children: []
+  },
+
+  "helix-event": {
+    title: "helix-event",
+    kind: "Hook system",
+    summary: "Defines the event system: synchronous hooks, async hooks with debouncing, and helper queues for redraw/status messages.",
+    details: [
+      { title: "Key features", bullets: ["events! macro", "register_hook macro", "AsyncHook + TaskController", "redraw/status helpers"] }
+    ],
+    children: ["helix-event.events", "helix-event.hooks", "helix-event.async", "helix-event.redraw"]
+  },
+  "helix-event.events": {
+    title: "Events macro",
+    kind: "Event types",
+    summary: "The events! macro defines typed events with optional lifetimes, ensuring hooks can be safely registered and dispatched.",
+    details: [
+      { title: "Example usage", bullets: ["DocumentDidOpen", "SelectionDidChange", "LanguageServerInitialized"] }
+    ],
+    children: []
+  },
+  "helix-event.hooks": {
+    title: "Synchronous hooks",
+    kind: "Immediate reactions",
+    summary: "Hooks run during the dispatch and can synchronously adjust editor state, such as hiding UI or mutating flags.",
+    details: [
+      { title: "Constraints", bullets: ["Must be fast", "No long-running work"] }
+    ],
+    children: []
+  },
+  "helix-event.async": {
+    title: "AsyncHook",
+    kind: "Background work",
+    summary: "Async hooks are used for expensive tasks, debounced work, or stateful handlers that live outside the main thread.",
+    details: [
+      { title: "Mechanics", bullets: ["Channels for event delivery", "TaskController for cancellation"] }
+    ],
+    children: []
+  },
+  "helix-event.redraw": {
+    title: "Redraw + status",
+    kind: "UI coordination",
+    summary: "Allows background tasks and hooks to request redraws and post status messages without direct access to the compositor.",
+    details: [
+      { title: "Used by", bullets: ["Async hooks", "Language server feedback"] }
+    ],
+    children: []
+  },
+
+  "helix-lsp": {
+    title: "helix-lsp",
+    kind: "Language server client",
+    summary: "Implements the LSP client and provides LanguageServerId + message handling used by helix-view and helix-term.",
+    details: [
+      { title: "Interface", bullets: ["Requests/notifications", "Diagnostics, hover, completion"] }
+    ],
+    children: []
+  },
+  "helix-dap": {
+    title: "helix-dap",
+    kind: "Debug adapter client",
+    summary: "Client for the Debug Adapter Protocol. Integrated by helix-view to support debugging capabilities.",
+    details: [
+      { title: "Interface", bullets: ["DebugAdapterId", "Breakpoints + sessions"] }
+    ],
+    children: []
+  },
+  "helix-vcs": {
+    title: "helix-vcs",
+    kind: "Version control",
+    summary: "Diff providers and VCS integration for gutters and status. Uses helix-event for updates.",
+    details: [
+      { title: "Signals", bullets: ["Diffs shown in gutter", "Status info for UI"] }
+    ],
+    children: []
+  },
+  "helix-loader": {
+    title: "helix-loader",
+    kind: "Runtime loader",
+    summary: "Loads runtime files (themes, queries, grammars) and manages config/log paths used across crates.",
+    details: [
+      { title: "Assets", bullets: ["runtime/queries", "runtime/themes", "config files"] }
+    ],
+    children: []
+  },
+  "helix-tui": {
+    title: "helix-tui",
+    kind: "TUI primitives",
+    summary: "Terminal UI drawing primitives and widgets. Used by helix-term for rendering surfaces and components.",
+    details: [
+      { title: "Role", bullets: ["Surface + Rect", "Drawing primitives"] }
+    ],
+    children: []
+  },
+  "helix-stdx": {
+    title: "helix-stdx",
+    kind: "Utilities",
+    summary: "Shared utilities used across the workspace (paths, env helpers, small extensions).",
+    details: [
+      { title: "Why it exists", bullets: ["Avoid duplicated helpers", "Centralize small utilities"] }
+    ],
+    children: []
+  }
+};
+
+const panelTitle = document.getElementById("panel-title");
+const panelKind = document.getElementById("panel-kind");
+const panelSummary = document.getElementById("panel-summary");
+const panelDetails = document.getElementById("panel-details");
+const panelChildren = document.getElementById("panel-children");
+const panelBreadcrumbs = document.getElementById("panel-breadcrumbs");
+
+const breadcrumbMap = {
+  "helix-term": ["overview", "helix-term"],
+  "helix-term.application": ["overview", "helix-term", "helix-term.application"],
+  "helix-term.application.loop": ["overview", "helix-term", "helix-term.application", "helix-term.application.loop"],
+  "helix-term.application.init": ["overview", "helix-term", "helix-term.application", "helix-term.application.init"],
+  "helix-term.compositor": ["overview", "helix-term", "helix-term.compositor"],
+  "helix-term.commands": ["overview", "helix-term", "helix-term.commands"],
+  "helix-term.keymap": ["overview", "helix-term", "helix-term.keymap"],
+  "helix-term.ui": ["overview", "helix-term", "helix-term.ui"],
+
+  "helix-view": ["overview", "helix-view"],
+  "helix-view.document": ["overview", "helix-view", "helix-view.document"],
+  "helix-view.document.rope": ["overview", "helix-view", "helix-view.document", "helix-view.document.rope"],
+  "helix-view.document.history": ["overview", "helix-view", "helix-view.document", "helix-view.document.history"],
+  "helix-view.document.lsp": ["overview", "helix-view", "helix-view.document", "helix-view.document.lsp"],
+  "helix-view.view": ["overview", "helix-view", "helix-view.view"],
+  "helix-view.view.selection": ["overview", "helix-view", "helix-view.view", "helix-view.view.selection"],
+  "helix-view.editor": ["overview", "helix-view", "helix-view.editor"],
+  "helix-view.editor.actions": ["overview", "helix-view", "helix-view.editor", "helix-view.editor.actions"],
+  "helix-view.events": ["overview", "helix-view", "helix-view.events"],
+  "helix-view.theme": ["overview", "helix-view", "helix-view.theme"],
+
+  "helix-core": ["overview", "helix-core"],
+  "helix-core.rope": ["overview", "helix-core", "helix-core.rope"],
+  "helix-core.transaction": ["overview", "helix-core", "helix-core.transaction"],
+  "helix-core.transaction.changeset": ["overview", "helix-core", "helix-core.transaction", "helix-core.transaction.changeset"],
+  "helix-core.selection": ["overview", "helix-core", "helix-core.selection"],
+  "helix-core.syntax": ["overview", "helix-core", "helix-core.syntax"],
+  "helix-core.syntax.queries": ["overview", "helix-core", "helix-core.syntax", "helix-core.syntax.queries"],
+  "helix-core.diagnostics": ["overview", "helix-core", "helix-core.diagnostics"],
+
+  "helix-event": ["overview", "helix-event"],
+  "helix-event.events": ["overview", "helix-event", "helix-event.events"],
+  "helix-event.hooks": ["overview", "helix-event", "helix-event.hooks"],
+  "helix-event.async": ["overview", "helix-event", "helix-event.async"],
+  "helix-event.redraw": ["overview", "helix-event", "helix-event.redraw"],
+
+  "helix-lsp": ["overview", "helix-lsp"],
+  "helix-dap": ["overview", "helix-dap"],
+  "helix-vcs": ["overview", "helix-vcs"],
+  "helix-loader": ["overview", "helix-loader"],
+  "helix-tui": ["overview", "helix-tui"],
+  "helix-stdx": ["overview", "helix-stdx"]
+};
+
+function setActiveNode(id) {
+  const node = nodes[id] || nodes.overview;
+  panelTitle.textContent = node.title;
+  panelKind.textContent = node.kind;
+  panelSummary.textContent = node.summary;
+
+  panelDetails.innerHTML = "";
+  node.details.forEach(section => {
+    const wrapper = document.createElement("div");
+    wrapper.className = "section";
+    const h3 = document.createElement("h3");
+    h3.textContent = section.title;
+    wrapper.appendChild(h3);
+    const ul = document.createElement("ul");
+    section.bullets.forEach(item => {
+      const li = document.createElement("li");
+      li.textContent = item;
+      ul.appendChild(li);
+    });
+    wrapper.appendChild(ul);
+    panelDetails.appendChild(wrapper);
+  });
+
+  panelChildren.innerHTML = "";
+  node.children.forEach(child => {
+    const btn = document.createElement("button");
+    btn.className = "chip";
+    btn.textContent = nodes[child]?.title || child;
+    btn.addEventListener("click", () => setActiveNode(child));
+    panelChildren.appendChild(btn);
+  });
+
+  const crumbs = breadcrumbMap[id] || ["overview"];
+  panelBreadcrumbs.textContent = crumbs.map(c => nodes[c]?.title || c).join(" / ");
+
+  document.querySelectorAll("g.node").forEach(g => g.classList.remove("active"));
+  const svgNode = document.querySelector(`g.node[data-node="${id}"]`);
+  if (svgNode) svgNode.classList.add("active");
+}
+
+// graph click handling
+Array.from(document.querySelectorAll("g.node")).forEach(nodeEl => {
+  nodeEl.style.cursor = "pointer";
+  nodeEl.addEventListener("click", () => {
+    const id = nodeEl.getAttribute("data-node");
+    if (id) setActiveNode(id);
+  });
+});
+
+setActiveNode("overview");
+</script>
+</body>
+</html>
